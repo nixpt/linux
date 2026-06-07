@@ -3,6 +3,7 @@
 
 #include <linux/fs.h>
 #include <linux/firmware.h>
+#include <linux/dmi.h>
 #include "mt7925.h"
 #include "regd.h"
 #include "mcu.h"
@@ -921,6 +922,21 @@ mt7925_mcu_parse_eml_cap(struct mt792x_dev *dev, char *data)
 	dev->phy.eml_cap = le16_to_cpu(cap->eml_cap);
 }
 
+static const struct dmi_system_id mt7925_rfkill_quirks[] = {
+	{
+		/* MSI Vector A16 HX A8WHG: firmware reports the WLAN RF-disable
+		 * pin as asserted even though there is no physical switch and
+		 * the radio works, so RF-pin rfkill polling latches a permanent
+		 * hard block.
+		 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Vector A16 HX A8WHG"),
+		},
+	},
+	{ }
+};
+
 static int
 mt7925_mcu_get_nic_capability(struct mt792x_dev *dev)
 {
@@ -977,6 +993,10 @@ mt7925_mcu_get_nic_capability(struct mt792x_dev *dev)
 			break;
 		case MT_NIC_CAP_CHIP_CAP:
 			dev->phy.chip_cap = le64_to_cpu(*(__le64 *)tlv->data);
+
+			if (dmi_check_system(mt7925_rfkill_quirks))
+				dev->phy.chip_cap &=
+					~MT792x_CHIP_CAP_WF_RF_PIN_CTRL_EVT_EN;
 			break;
 		case MT_NIC_CAP_EML_CAP:
 			mt7925_mcu_parse_eml_cap(dev, tlv->data);
